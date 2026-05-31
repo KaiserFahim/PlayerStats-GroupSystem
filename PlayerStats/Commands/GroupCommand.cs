@@ -17,6 +17,7 @@ namespace RestoreMonarchy.PlayerStats.Commands
         private PlayerStatsConfiguration configuration => pluginInstance.Configuration.Instance;
 
         private static readonly Dictionary<ulong, DateTime> disbandConfirmations = new();
+        private static readonly Dictionary<ulong, DateTime> leaveConfirmations = new();
 
         public AllowedCaller AllowedCaller => AllowedCaller.Player;
 
@@ -57,10 +58,10 @@ namespace RestoreMonarchy.PlayerStats.Commands
                     HandleJoin(caller, args);
                     break;
                 case "leave":
-                    HandleLeave(caller);
+                    HandleLeave(caller, args);
                     break;
                 case "info":
-                    HandleInfo(caller);
+                    HandleInfo(caller, args);
                     break;
                 case "leaderboard":
                     HandleLeaderboard(caller, args);
@@ -131,6 +132,7 @@ namespace RestoreMonarchy.PlayerStats.Commands
                     }
 
                     string groupId = Guid.NewGuid().ToString("N").Substring(0, 16);
+                    JoinSnapshot snapshot = CreateSnapshot(component.PlayerData);
                     Group group = new()
                     {
                         GroupId = groupId,
@@ -139,6 +141,8 @@ namespace RestoreMonarchy.PlayerStats.Commands
                         Members = new List<ulong> { component.SteamId },
                         CreatedAt = DateTime.UtcNow
                     };
+                    group.JoinSnapshots[component.SteamId] = snapshot;
+                    component.groupJoinSnapshot = snapshot;
 
                     component.PlayerData.GroupId = groupId;
 
@@ -199,12 +203,6 @@ namespace RestoreMonarchy.PlayerStats.Commands
                     if (targetComponent == null || !string.IsNullOrEmpty(targetComponent.PlayerData.GroupId))
                     {
                         pluginInstance.SendMessageToPlayer(caller, "GroupInviteFailAlreadyInGroup", targetName);
-                        return;
-                    }
-
-                    if (group.Members.Count >= configuration.MaxGroupSize)
-                    {
-                        pluginInstance.SendMessageToPlayer(caller, "GroupInviteFailFull", configuration.MaxGroupSize);
                         return;
                     }
 
@@ -279,6 +277,9 @@ namespace RestoreMonarchy.PlayerStats.Commands
 
                     group.Members.Add(steamId);
                     group.InvitedPlayers.Remove(steamId);
+                    JoinSnapshot snapshot = CreateSnapshot(component.PlayerData);
+                    group.JoinSnapshots[steamId] = snapshot;
+                    component.groupJoinSnapshot = snapshot;
                     component.PlayerData.GroupId = group.GroupId;
 
                     ThreadHelper.RunAsynchronously(() =>
@@ -292,7 +293,7 @@ namespace RestoreMonarchy.PlayerStats.Commands
             });
         }
 
-        private void HandleLeave(IRocketPlayer caller)
+        private void HandleLeave(IRocketPlayer caller, string[] args)
         {
             UnturnedPlayer player = GetUnturnedPlayer(caller);
             PlayerStatsComponent component = player.Player.GetComponent<PlayerStatsComponent>();
@@ -303,65 +304,106 @@ namespace RestoreMonarchy.PlayerStats.Commands
                 return;
             }
 
-            ThreadHelper.RunAsynchronously(() =>
+            if (args.Length > 0 && args[0].ToLower() == "confirm")
             {
-                Group group = pluginInstance.GroupDatabase.GetGroup(component.PlayerData.GroupId);
-                ThreadHelper.RunSynchronously(() =>
+                ulong steamId = component.SteamId;
+                lock (leaveConfirmations)
                 {
-                    if (group == null)
+                    if (!leaveConfirmations.TryGetValue(steamId, out DateTime expiry) || DateTime.UtcNow > expiry)
                     {
+                        pluginInstance.SendMessageToPlayer(caller, "GroupLeaveExpired");
+                        return;
+                    }
+                    leaveConfirmations.Remove(steamId);
+                }
+
+                ThreadHelper.RunAsynchronously(() =>
+                {
+                    Group group = pluginInstance.GroupDatabase.GetGroup(component.PlayerData.GroupId);
+                    ThreadHelper.RunSynchronously(() =>
+                    {
+                        if (group == null)
+                        {
+                            component.PlayerData.GroupId = null;
+                            component.groupJoinSnapshot = null;
+                            pluginInstance.SendMessageToPlayer(caller, "GroupLeaveFailNotInGroup");
+                            return;
+                        }
+
+                        ulong sid = component.SteamId;
+                        group.Members.Remove(sid);
+                        group.JoinSnapshots.Remove(sid);
                         component.PlayerData.GroupId = null;
-                        pluginInstance.SendMessageToPlayer(caller, "GroupLeaveFailNotInGroup");
-                        return;
-                    }
+                        component.groupJoinSnapshot = null;
 
-                    ulong steamId = component.SteamId;
-                    group.Members.Remove(steamId);
-                    component.PlayerData.GroupId = null;
-
-                    if (group.Members.Count == 0)
-                    {
-                        ThreadHelper.RunAsynchronously(() =>
+                        if (group.Members.Count == 0)
                         {
-                            pluginInstance.GroupDatabase.DeleteGroup(group.GroupId);
-                            pluginInstance.Database.AddOrUpdatePlayer(component.PlayerData);
-                        });
-                        pluginInstance.SendMessageToPlayer(caller, "GroupLeaveOwnerDestroyed");
-                        return;
-                    }
+                            ThreadHelper.RunAsynchronously(() =>
+                            {
+                                pluginInstance.GroupDatabase.DeleteGroup(group.GroupId);
+                                pluginInstance.Database.AddOrUpdatePlayer(component.PlayerData);
+                            });
+                            pluginInstance.SendMessageToPlayer(caller, "GroupLeaveOwnerDestroyed");
+                            return;
+                        }
 
-                    if (group.OwnerSteamId == steamId)
-                    {
-                        group.OwnerSteamId = group.Members[0];
-
-                        UnturnedPlayer newOwner = UnturnedPlayer.FromCSteamID(new Steamworks.CSteamID(group.OwnerSteamId));
-                        string newOwnerName = newOwner?.DisplayName ?? group.OwnerSteamId.ToString();
-
-                        ThreadHelper.RunAsynchronously(() =>
+                        if (group.OwnerSteamId == sid)
                         {
-                            pluginInstance.GroupDatabase.AddOrUpdateGroup(group);
-                            pluginInstance.Database.AddOrUpdatePlayer(component.PlayerData);
-                        });
-
-                        pluginInstance.SendMessageToPlayer(caller, "GroupLeaveOwnershipTransferred", newOwnerName);
-                    }
-                    else
-                    {
-                        ThreadHelper.RunAsynchronously(() =>
+                            group.OwnerSteamId = group.Members[0];
+                            UnturnedPlayer newOwner = UnturnedPlayer.FromCSteamID(new Steamworks.CSteamID(group.OwnerSteamId));
+                            string newOwnerName = newOwner?.DisplayName ?? group.OwnerSteamId.ToString();
+                            ThreadHelper.RunAsynchronously(() =>
+                            {
+                                pluginInstance.GroupDatabase.AddOrUpdateGroup(group);
+                                pluginInstance.Database.AddOrUpdatePlayer(component.PlayerData);
+                            });
+                            pluginInstance.SendMessageToPlayer(caller, "GroupLeaveOwnershipTransferred", newOwnerName);
+                        }
+                        else
                         {
-                            pluginInstance.GroupDatabase.AddOrUpdateGroup(group);
-                            pluginInstance.Database.AddOrUpdatePlayer(component.PlayerData);
-                        });
-                        pluginInstance.SendMessageToPlayer(caller, "GroupLeaveSuccess");
-                    }
+                            ThreadHelper.RunAsynchronously(() =>
+                            {
+                                pluginInstance.GroupDatabase.AddOrUpdateGroup(group);
+                                pluginInstance.Database.AddOrUpdatePlayer(component.PlayerData);
+                            });
+                            pluginInstance.SendMessageToPlayer(caller, "GroupLeaveSuccess");
+                        }
+                    });
                 });
-            });
+            }
+            else
+            {
+                lock (leaveConfirmations)
+                {
+                    leaveConfirmations[component.SteamId] = DateTime.UtcNow.AddSeconds(30);
+                }
+                pluginInstance.SendMessageToPlayer(caller, "GroupLeaveConfirm");
+            }
         }
 
-        private void HandleInfo(IRocketPlayer caller)
+        private void HandleInfo(IRocketPlayer caller, string[] args)
         {
             UnturnedPlayer player = GetUnturnedPlayer(caller);
             PlayerStatsComponent component = player.Player.GetComponent<PlayerStatsComponent>();
+
+            if (args.Length > 0)
+            {
+                string groupName = args[0];
+                ThreadHelper.RunAsynchronously(() =>
+                {
+                    Group lookupGroup = pluginInstance.GroupDatabase.GetGroupByName(groupName);
+                    ThreadHelper.RunSynchronously(() =>
+                    {
+                        if (lookupGroup == null)
+                        {
+                            pluginInstance.SendMessageToPlayer(caller, "GroupInfoEmpty");
+                            return;
+                        }
+                        SendGroupInfo(caller, lookupGroup);
+                    });
+                });
+                return;
+            }
 
             if (component == null || string.IsNullOrEmpty(component.PlayerData.GroupId))
             {
@@ -372,18 +414,6 @@ namespace RestoreMonarchy.PlayerStats.Commands
             ThreadHelper.RunAsynchronously(() =>
             {
                 Group group = pluginInstance.GroupDatabase.GetGroup(component.PlayerData.GroupId);
-                GroupRanking ranking = pluginInstance.GroupDatabase.GetGroupRank(group.GroupId, configuration.ActualStatsMode);
-
-                List<(ulong steamId, PlayerStatsData stats)> memberStats = new();
-                foreach (ulong memberId in group.Members)
-                {
-                    PlayerStatsData stats = pluginInstance.Database.GetPlayer(memberId);
-                    if (stats != null)
-                    {
-                        memberStats.Add((memberId, stats));
-                    }
-                }
-
                 ThreadHelper.RunSynchronously(() =>
                 {
                     if (group == null)
@@ -391,49 +421,78 @@ namespace RestoreMonarchy.PlayerStats.Commands
                         pluginInstance.SendMessageToPlayer(caller, "GroupInfoEmpty");
                         return;
                     }
+                    SendGroupInfo(caller, group);
+                });
+            });
+        }
 
-                    UnturnedPlayer owner = UnturnedPlayer.FromCSteamID(new Steamworks.CSteamID(group.OwnerSteamId));
-                    string ownerName = owner?.DisplayName ?? group.OwnerSteamId.ToString();
-                    string created = group.CreatedAt.ToString("yyyy-MM-dd");
-                    string rankStr = ranking != null ? "#" + ranking.Rank.ToString() : "-";
+        private void SendGroupInfo(IRocketPlayer caller, Group group)
+        {
+            ThreadHelper.RunAsynchronously(() =>
+            {
+                int totalKills = 0, totalDeaths = 0;
+                List<(ulong steamId, string name, int kills, int deaths, double kdr)> memberList = new();
 
-                    pluginInstance.SendMessageToPlayer(caller, "GroupInfoHeader",
-                        $"{group.GroupName} [{rankStr}]", ownerName, group.Members.Count, configuration.MaxGroupSize, created);
+                foreach (ulong memberId in group.Members)
+                {
+                    JoinSnapshot snap = group.JoinSnapshots.ContainsKey(memberId) ? group.JoinSnapshots[memberId] : new JoinSnapshot();
 
-                    if (configuration.ActualStatsMode == StatsMode.Both || configuration.ActualStatsMode == StatsMode.PVP)
+                    PlayerStatsComponent memberComp = null;
+                    foreach (Player p in PlayerTool.EnumeratePlayers())
                     {
-                        List<(ulong steamId, PlayerStatsData stats)> sorted = memberStats
-                            .OrderByDescending(m => m.stats.Kills)
-                            .ToList();
-
-                        for (int i = 0; i < sorted.Count; i++)
+                        if (p.channel.owner.playerID.steamID.m_SteamID == memberId)
                         {
-                            string name = GetPlayerName(sorted[i].steamId, sorted[i].stats.Name);
-                            string kills = sorted[i].stats.Kills.ToString("N0");
-                            string deaths = sorted[i].stats.Deaths.ToString("N0");
-                            string kdr = sorted[i].stats.Deaths == 0
-                                ? sorted[i].stats.Kills.ToString("N2")
-                                : ((decimal)sorted[i].stats.Kills / sorted[i].stats.Deaths).ToString("N2");
-
-                            pluginInstance.SendMessageToPlayer(caller, "GroupInfoMemberPVP",
-                                (i + 1).ToString(), name, kills, deaths, kdr);
+                            memberComp = p.GetComponent<PlayerStatsComponent>();
+                            break;
                         }
+                    }
+
+                    int kills, deaths;
+                    if (memberComp != null)
+                    {
+                        kills = Math.Max(0, memberComp.PlayerData.Kills - snap.Kills);
+                        deaths = Math.Max(0, memberComp.PlayerData.PVPDeaths - snap.PVPDeaths);
+                        deaths += Math.Max(0, memberComp.PlayerData.PVEDeaths - snap.PVEDeaths);
+                        double kdr = deaths == 0 ? kills : (double)kills / deaths;
+                        totalKills += kills;
+                        totalDeaths += deaths;
+                        memberList.Add((memberId, memberComp.Name, kills, deaths, kdr));
                     }
                     else
                     {
-                        List<(ulong steamId, PlayerStatsData stats)> sorted = memberStats
-                            .OrderByDescending(m => m.stats.Zombies)
-                            .ToList();
-
-                        for (int i = 0; i < sorted.Count; i++)
+                        PlayerStatsData dbData = pluginInstance.Database.GetPlayer(memberId);
+                        if (dbData != null)
                         {
-                            string name = GetPlayerName(sorted[i].steamId, sorted[i].stats.Name);
-                            string zombies = sorted[i].stats.Zombies.ToString("N0");
-                            string animals = sorted[i].stats.Animals.ToString("N0");
-
-                            pluginInstance.SendMessageToPlayer(caller, "GroupInfoMemberPVE",
-                                (i + 1).ToString(), name, zombies, animals);
+                            kills = Math.Max(0, dbData.Kills - snap.Kills);
+                            deaths = Math.Max(0, dbData.PVPDeaths - snap.PVPDeaths);
+                            deaths += Math.Max(0, dbData.PVEDeaths - snap.PVEDeaths);
+                            double kdr = deaths == 0 ? kills : (double)kills / deaths;
+                            totalKills += kills;
+                            totalDeaths += deaths;
+                            memberList.Add((memberId, dbData.Name, kills, deaths, kdr));
                         }
+                    }
+                }
+
+                double totalKDR = totalDeaths == 0 ? totalKills : (double)totalKills / totalDeaths;
+
+                ThreadHelper.RunSynchronously(() =>
+                {
+                    UnturnedPlayer owner = UnturnedPlayer.FromCSteamID(new Steamworks.CSteamID(group.OwnerSteamId));
+                    string ownerName = owner?.DisplayName ?? group.OwnerSteamId.ToString();
+
+                    pluginInstance.SendMessageToPlayer(caller, "GroupInfoHeader",
+                        group.GroupName, ownerName, group.Members.Count);
+
+                    pluginInstance.SendMessageToPlayer(caller, "GroupInfoTotalPVP",
+                        totalKills.ToString("N0"), totalDeaths.ToString("N0"), totalKDR.ToString("N2"));
+
+                    var sorted = memberList.OrderByDescending(m => m.kills).ToList();
+                    for (int i = 0; i < sorted.Count; i++)
+                    {
+                        string name = GetPlayerName(sorted[i].steamId, sorted[i].name);
+                        pluginInstance.SendMessageToPlayer(caller, "GroupInfoMemberPVP",
+                            (i + 1).ToString(), name, sorted[i].kills.ToString("N0"), sorted[i].deaths.ToString("N0"), sorted[i].kdr.ToString("N2"));
                     }
                 });
             });
@@ -564,7 +623,7 @@ namespace RestoreMonarchy.PlayerStats.Commands
 
                         lock (disbandConfirmations)
                         {
-                            disbandConfirmations[component.SteamId] = DateTime.UtcNow.AddSeconds(5);
+                            disbandConfirmations[component.SteamId] = DateTime.UtcNow.AddSeconds(30);
                         }
                         pluginInstance.SendMessageToPlayer(caller, "GroupDisbandConfirm");
                     });
@@ -754,7 +813,7 @@ namespace RestoreMonarchy.PlayerStats.Commands
                         }
 
                         pluginInstance.SendMessageToPlayer(caller, "GroupStatsHeader",
-                            group.GroupName, group.Members.Count, configuration.MaxGroupSize);
+                            group.GroupName, group.Members.Count);
 
                         ThreadHelper.RunAsynchronously(() =>
                         {
@@ -812,6 +871,25 @@ namespace RestoreMonarchy.PlayerStats.Commands
         {
             UnturnedPlayer player = UnturnedPlayer.FromCSteamID(new Steamworks.CSteamID(steamId));
             return player?.DisplayName ?? fallback ?? steamId.ToString();
+        }
+
+        private static JoinSnapshot CreateSnapshot(PlayerStatsData data)
+        {
+            return new JoinSnapshot
+            {
+                Kills = data.Kills,
+                Headshots = data.Headshots,
+                PVPDeaths = data.PVPDeaths,
+                PVEDeaths = data.PVEDeaths,
+                Zombies = data.Zombies,
+                MegaZombies = data.MegaZombies,
+                Animals = data.Animals,
+                Resources = data.Resources,
+                Harvests = data.Harvests,
+                Fish = data.Fish,
+                Structures = data.Structures,
+                Barricades = data.Barricades
+            };
         }
     }
 }

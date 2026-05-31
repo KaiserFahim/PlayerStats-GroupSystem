@@ -1,8 +1,11 @@
-﻿using RestoreMonarchy.PlayerStats.Helpers;
+using RestoreMonarchy.PlayerStats.Helpers;
 using RestoreMonarchy.PlayerStats.Models;
 using Rocket.Core.Logging;
 using SDG.NetTransport;
 using SDG.Unturned;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace RestoreMonarchy.PlayerStats.Components
 {
@@ -24,7 +27,6 @@ namespace RestoreMonarchy.PlayerStats.Components
             isOpen = true;
             EffectManager.sendUIEffect(configuration.UIEffectId, Key, TransportConnection, true);
 
-            // Use different translations based on UI mode
             if (configuration.ActualStatsMode == StatsMode.Both || configuration.ActualStatsMode == StatsMode.PVP)
             {
                 EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Text", pluginInstance.Translate("UI_Kills"));
@@ -65,14 +67,10 @@ namespace RestoreMonarchy.PlayerStats.Components
 
         public void UpdateUIEffect()
         {
-            if (!isOpen)
-            {
-                return;
-            }
+            if (!isOpen) return;
 
             if (configuration.ActualStatsMode == StatsMode.Both || configuration.ActualStatsMode == StatsMode.PVP)
             {
-                // PVP Stats
                 string kills = PlayerData.Kills.ToString("N0");
                 string deaths = PlayerData.Deaths.ToString("N0");
                 string headshots = PlayerData.Headshots.ToString("N0");
@@ -87,7 +85,6 @@ namespace RestoreMonarchy.PlayerStats.Components
             }
             else
             {
-                // PVE Stats
                 string zombieKills = PlayerData.Zombies.ToString("N0");
                 string megaZombieKills = PlayerData.MegaZombies.ToString("N0");
                 string animalKills = PlayerData.Animals.ToString("N0");
@@ -106,25 +103,22 @@ namespace RestoreMonarchy.PlayerStats.Components
                 Reward reward = GetNextReward();
                 if (reward != null)
                 {
-                    string nextReward;
-                    string progress;
+                    string nextReward, progress;
                     int progressPercentage;
-
                     if (configuration.ActualStatsMode == StatsMode.Both || configuration.ActualStatsMode == StatsMode.PVP)
                     {
                         nextReward = pluginInstance.Translate("UI_NextReward", reward.Name);
                         progress = pluginInstance.Translate("UI_RewardProgress", PlayerData.Kills.ToString("N0"), reward.Treshold.ToString("N0"));
                         progressPercentage = (int)((PlayerData.Kills / (float)reward.Treshold) * 100);
-                    } else
+                    }
+                    else
                     {
                         nextReward = pluginInstance.Translate("UI_NextReward", reward.Name);
                         progress = pluginInstance.Translate("UI_RewardProgressPVE", PlayerData.Zombies.ToString("N0"), reward.Treshold.ToString("N0"));
                         progressPercentage = (int)((PlayerData.Zombies / (float)reward.Treshold) * 100);
                     }
-
                     EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Reward_Text", nextReward);
                     EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Progress_Text", progress);
-
                     EffectManager.sendUIEffectVisibility(Key, TransportConnection, true, $"PlayerStats_ProgressBar_Fill_{prevPercentageProgress}", false);
                     EffectManager.sendUIEffectVisibility(Key, TransportConnection, true, $"PlayerStats_ProgressBar_Fill_{progressPercentage}", true);
                     prevPercentageProgress = progressPercentage;
@@ -138,30 +132,14 @@ namespace RestoreMonarchy.PlayerStats.Components
 
         public void UpdateUIEffectRank(PlayerRanking playerRanking)
         {
-            if (!isOpen)
-            {
-                return;
-            }
-
-            string rankString;
-            if (playerRanking.IsUnranked())
-            {
-                rankString = "-";
-            }
-            else
-            {
-                rankString = "#" + playerRanking.Rank.ToString("N0");
-            }
+            if (!isOpen) return;
+            string rankString = playerRanking.IsUnranked() ? "-" : "#" + playerRanking.Rank.ToString("N0");
             EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", rankString);
         }
 
         public void ShowUIEffect()
         {
-            if (!isOpen)
-            {
-                return;
-            }
-
+            if (!isOpen) return;
             EffectManager.sendUIEffectVisibility(Key, TransportConnection, true, "PlayerStatsUIHolder", true);
         }
 
@@ -179,95 +157,121 @@ namespace RestoreMonarchy.PlayerStats.Components
 
         public void ToggleUIGroupPanel()
         {
-            if (isGroupPanelOpen)
-            {
-                HideUIGroupPanel();
-            }
-            else
-            {
-                SendUIGroupPanel();
-            }
+            if (isGroupPanelOpen) HideUIGroupPanel();
+            else SendUIGroupPanel();
         }
 
         public void SendUIGroupPanel()
         {
-            if (isGroupPanelOpen)
-            {
-                return;
-            }
-
-            if (isOpen)
-            {
-                HideUIEffect();
-            }
-
+            if (isGroupPanelOpen) return;
+            if (isOpen) HideUIEffect();
             isGroupPanelOpen = true;
             EffectManager.sendUIEffect(configuration.UIEffectId, Key, TransportConnection, true);
-
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Text", pluginInstance.Translate("UI_GroupPanelTitle"));
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Stats_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Stats_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Stats_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Stats_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Stats_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Group_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Reward_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Progress_Text", "");
-            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Footer_Text", pluginInstance.Translate("UI_GroupPanelFooter"));
             EffectManager.sendUIEffectVisibility(Key, TransportConnection, true, "PlayerStats_ProgressBar", false);
-
             UpdateUIGroupPanelInfo();
             ShowUIEffect();
         }
 
         public void UpdateUIGroupPanelInfo()
         {
-            if (!isGroupPanelOpen)
+            if (!isGroupPanelOpen) return;
+
+            if (string.IsNullOrEmpty(PlayerData.GroupId))
             {
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Text", pluginInstance.Translate("UI_GroupPanel_NoGroup"));
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Stats_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Stats_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Stats_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Stats_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Stats_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Group_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Reward_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Progress_Text", "");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Footer_Text", pluginInstance.Translate("UI_GroupPanelFooter"));
                 return;
             }
 
-            string menuText;
-            if (!string.IsNullOrEmpty(PlayerData.GroupId))
+            ThreadHelper.RunAsynchronously(() =>
             {
-                ThreadHelper.RunAsynchronously(() =>
+                try
                 {
                     Group group = pluginInstance.GroupDatabase.GetGroup(PlayerData.GroupId);
-                    GroupRanking ranking = group != null ? pluginInstance.GroupDatabase.GetGroupRank(group.GroupId, configuration.ActualStatsMode) : null;
+                    if (group == null) return;
 
-                    ThreadHelper.RunSynchronously(() =>
+                    int totalKills = 0, totalDeaths = 0;
+
+                    foreach (ulong memberId in group.Members)
                     {
-                        if (group == null)
+                        JoinSnapshot snap = group.JoinSnapshots.ContainsKey(memberId) ? group.JoinSnapshots[memberId] : new JoinSnapshot();
+
+                        PlayerStatsComponent memberComp = null;
+                        foreach (Player p in PlayerTool.EnumeratePlayers())
                         {
-                            menuText = pluginInstance.Translate("UI_GroupPanelMenuNoGroup");
+                            if (p.channel.owner.playerID.steamID.m_SteamID == memberId)
+                            {
+                                memberComp = p.GetComponent<PlayerStatsComponent>();
+                                break;
+                            }
+                        }
+
+                        if (memberComp != null)
+                        {
+                            totalKills += Math.Max(0, memberComp.PlayerData.Kills - snap.Kills);
+                            totalDeaths += Math.Max(0, memberComp.PlayerData.PVPDeaths - snap.PVPDeaths);
+                            totalDeaths += Math.Max(0, memberComp.PlayerData.PVEDeaths - snap.PVEDeaths);
                         }
                         else
                         {
-                            string rankStr = ranking != null ? "#" + ranking.Rank.ToString() : "-";
-                            menuText = pluginInstance.Translate("UI_GroupPanelMenuJoined", group.GroupName, rankStr, group.Members.Count);
+                            PlayerStatsData dbData = pluginInstance.Database.GetPlayer(memberId);
+                            if (dbData != null)
+                            {
+                                totalKills += Math.Max(0, dbData.Kills - snap.Kills);
+                                totalDeaths += Math.Max(0, dbData.PVPDeaths - snap.PVPDeaths);
+                                totalDeaths += Math.Max(0, dbData.PVEDeaths - snap.PVEDeaths);
+                            }
                         }
-                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", menuText);
+                    }
+
+                    double totalKDR = totalDeaths == 0 ? totalKills : (double)totalKills / totalDeaths;
+
+                    ThreadHelper.RunSynchronously(() =>
+                    {
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Text", pluginInstance.Translate("UI_GroupPanel_Tag", group.GroupName));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", pluginInstance.Translate("UI_GroupPanel_Members", group.Members.Count));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Text", pluginInstance.Translate("UI_Kills"));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Stats_Text", totalKills.ToString("N0"));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Text", pluginInstance.Translate("UI_Deaths"));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Stats_Text", totalDeaths.ToString("N0"));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Text", pluginInstance.Translate("UI_KDR"));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Stats_Text", totalKDR.ToString("N2"));
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Text", "");
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Stats_Text", "");
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Text", "");
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Stats_Text", "");
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Footer_Text", pluginInstance.Translate("UI_GroupPanelFooter"));
+                        EffectManager.sendUIEffectVisibility(Key, TransportConnection, true, "PlayerStats_ProgressBar", false);
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Group_Text", "");
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Reward_Text", "");
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Progress_Text", "");
                     });
-                });
-            }
-            else
-            {
-                menuText = pluginInstance.Translate("UI_GroupPanelMenuNoGroup");
-                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", menuText);
-            }
+                }
+                catch (Exception ex)
+                {
+                    ThreadHelper.RunSynchronously(() => Logger.Log($"Group UI error for {Name}: {ex.Message}"));
+                }
+            });
         }
 
         public void HideUIGroupPanel()
         {
             EffectManager.askEffectClearByID(configuration.UIEffectId, TransportConnection);
             isGroupPanelOpen = false;
-
             if (isOpen)
             {
                 isOpen = false;

@@ -153,7 +153,7 @@ namespace RestoreMonarchy.PlayerStats
             MaxGroupSize = 10;
             InviteTimeoutSeconds = 120;
             GroupNameMinLength = 3;
-            GroupNameMaxLength = 16;
+            GroupNameMaxLength = 6;
             GroupLeaderboardPageSize = 10;
 
             EnableRewards = true;

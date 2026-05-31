@@ -25,6 +25,7 @@ namespace RestoreMonarchy.PlayerStats.Components
         public ulong SteamId => Player.channel.owner.playerID.steamID.m_SteamID;
         public PlayerStatsData PlayerData { get; private set; }
         public PlayerStatsData SessionPlayerData { get; private set; }
+        public JoinSnapshot groupJoinSnapshot;
         public bool Loaded { get; private set; }
 
         private Reward GetCurrentReward() 
