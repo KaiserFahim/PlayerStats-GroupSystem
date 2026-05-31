@@ -24,6 +24,7 @@ namespace RestoreMonarchy.PlayerStats
         public static PlayerStatsPlugin Instance { get; private set; }
         public UnityEngine.Color MessageColor { get; set; }
         public IDatabase Database { get; private set; }
+        public IGroupDatabase GroupDatabase { get; private set; }
 
         protected override void Load()
         {
@@ -38,13 +39,16 @@ namespace RestoreMonarchy.PlayerStats
             if (Configuration.Instance.DatabaseProvider.Equals("mysql", StringComparison.OrdinalIgnoreCase))
             {
                 Database = new MySQLDatabase();
+                GroupDatabase = new MySQLGroupDatabase();
                 Logger.Log("Database provider is set to MySQL");
             } else
             {
                 Database = new JsonDatabase();
+                GroupDatabase = new JsonGroupDatabase();
                 Logger.Log("Database provider is set to JSON");
             }            
             Database.Initialize();
+            GroupDatabase.Initialize();
 
             U.Events.OnPlayerConnected += OnPlayerConnected;
             U.Events.OnPlayerDisconnected += OnPlayerDisconnected;
@@ -61,6 +65,7 @@ namespace RestoreMonarchy.PlayerStats
             }
 
             InvokeRepeating(nameof(Save), Configuration.Instance.SaveIntervalSeconds, Configuration.Instance.SaveIntervalSeconds);
+            InvokeRepeating(nameof(CleanupExpiredInvites), 60, 60);
 
             Logger.Log($"{Name} {Assembly.GetName().Version.ToString(3)} has been loaded!", ConsoleColor.Yellow);
             Logger.Log($"Check out more Unturned plugins at restoremonarchy.com");
@@ -94,6 +99,7 @@ namespace RestoreMonarchy.PlayerStats
             Provider.onServerShutdown -= OnServerShutdown;
 
             CancelInvoke(nameof(Save));
+            CancelInvoke(nameof(CleanupExpiredInvites));
             Save(false);
 
             foreach (Player player in PlayerTool.EnumeratePlayers())
@@ -175,7 +181,64 @@ namespace RestoreMonarchy.PlayerStats
             { "UI_MegaZombieKills", "MEGAS" },
             { "UI_AnimalKills", "ANIMALS" },
             { "UI_ResourcesGathered", "GATHERS" },
-            { "UI_PVEDeaths", "DEATHS" }
+            { "UI_PVEDeaths", "DEATHS" },
+
+            { "GroupCreateSuccess", "Group [[b]]{0}[[/b]] created! Use /group invite <player> to invite members." },
+            { "GroupCreateFailNameLength", "Group name must be between {0} and {1} characters." },
+            { "GroupCreateFailAlreadyInGroup", "You are already in a group. Use /group leave first." },
+            { "GroupCreateFailNameTaken", "A group with the name [[b]]{0}[[/b]] already exists." },
+            { "GroupInviteSuccess", "You invited [[b]]{0}[[/b]] to your group. Invite expires in {1} seconds." },
+            { "GroupInviteReceived", "[[b]]{0}[[/b]] invited you to join [[b]]{1}[[/b]]. Use /group join {1} to accept." },
+            { "GroupInviteFailNotOwner", "You must be the group owner to invite players." },
+            { "GroupInviteFailPlayerNotFound", "Player [[b]]{0}[[/b]] not found." },
+            { "GroupInviteFailAlreadyInGroup", "[[b]]{0}[[/b]] is already in a group." },
+            { "GroupInviteFailAlreadyInvited", "[[b]]{0}[[/b]] already has a pending invite to your group." },
+            { "GroupInviteFailFull", "Your group is full ({0}/{0} members)." },
+            { "GroupInviteFailNotAllowed", "You cannot invite yourself." },
+            { "GroupJoinSuccess", "You joined [[b]]{0}[[/b]]! Group has {1} members." },
+            { "GroupJoinFailNoInvite", "You don't have a pending invite to [[b]]{0}[[/b]]." },
+            { "GroupJoinFailExpired", "Your invite to [[b]]{0}[[/b]] has expired." },
+            { "GroupJoinFailInGroup", "You are already in a group. Use /group leave first." },
+            { "GroupLeaveSuccess", "You left the group." },
+            { "GroupLeaveFailNotInGroup", "You are not in a group." },
+            { "GroupLeaveOwnershipTransferred", "You left the group. Ownership transferred to [[b]]{0}[[/b]]." },
+            { "GroupLeaveOwnerDestroyed", "You were the only member. The group has been disbanded." },
+            { "GroupInfoHeader", "[[b]]{0}[[/b]] | Owner: [[b]]{1}[[/b]] | Members: {2}/{3} | Created: {4}" },
+            { "GroupInfoMemberPVP", "  #{0} [[b]]{1}[[/b]] - {2} kills, {3} deaths, KDR: {4}" },
+            { "GroupInfoMemberPVE", "  #{0} [[b]]{1}[[/b]] - {2} zombie kills, {3} animals" },
+            { "GroupInfoEmpty", "You are not in a group." },
+            { "GroupLeaderboardHeaderPVP", "[[b]]Group Leaderboard — Top {0} by Kills (Page {1}/{2})[[/b]]" },
+            { "GroupLeaderboardHeaderPVE", "[[b]]Group Leaderboard — Top {0} by Zombie Kills (Page {1}/{2})[[/b]]" },
+            { "GroupLeaderboardItem", "  #{0} [[b]]{1}[[/b]] - {2} kills | {3} members" },
+            { "GroupLeaderboardItemPVE", "  #{0} [[b]]{1}[[/b]] - {2} zombie kills | {3} members" },
+            { "GroupLeaderboardEmpty", "No groups have been created yet." },
+            { "GroupLeaderboardNoPage", "Page {0} is out of range. Max page: {1}." },
+            { "GroupDisbandConfirm", "Are you sure? Type [[b]]/group disband confirm[[/b]] within 5 seconds to disband your group." },
+            { "GroupDisbandConfirmed", "Group [[b]]{0}[[/b]] has been disbanded." },
+            { "GroupDisbandExpired", "Disband confirmation expired." },
+            { "GroupDisbandFailNotOwner", "You must be the group owner to disband." },
+            { "GroupKickSuccess", "[[b]]{0}[[/b]] has been kicked from the group." },
+            { "GroupKickFailNotOwner", "You must be the group owner to kick members." },
+            { "GroupKickFailNotMember", "[[b]]{0}[[/b]] is not a member of your group." },
+            { "GroupKickFailSelf", "You cannot kick yourself. Use /group leave instead." },
+            { "GroupTransferSuccess", "Ownership transferred to [[b]]{0}[[/b]]." },
+            { "GroupTransferFailNotOwner", "You must be the group owner to transfer ownership." },
+            { "GroupTransferFailNotMember", "[[b]]{0}[[/b]] is not a member of your group." },
+            { "GroupTransferFailSelf", "You are already the owner." },
+            { "GroupStatsHeader", "[[b]]{0}[[/b]] group stats | Members: {1}/{2}" },
+            { "GroupStatsFailNoGroup", "[[b]]{0}[[/b]] is not in a group." },
+            { "GroupSyntax", "Usage: /group <create|invite|join|leave|info|leaderboard|disband|kick|transfer|stats>" },
+            { "UI_GroupText", "Group: {0} | Rank: #{1}" },
+            { "UI_NoGroupText", "No Group" },
+            { "UI_GroupPanelTitle", "GROUP MENU" },
+            { "UI_GroupPanelFooter", "/groupui to close" },
+            { "UI_GroupPanelMenuNoGroup", "<b>No Group</b>\n/group create <name>\n/group join <name>\n/group leaderboard\n/group stats <player>\n/groupcommands" },
+            { "UI_GroupPanelMenuJoined", "<b>{0}</b>\nRank: {1} | Members: {2}\n\n<b>Commands:</b>\n/group info\n/group invite <player>\n/group leave\n/group leaderboard\n/group transfer <player>\n/group disband\n/group kick <player>" },
+            { "GroupCommandsHeader", "[[b]]=== Group Commands ===[[/b]]" },
+            { "GroupCommandsNoGroup", "[[b]]No Group:[[/b]] /group create <name>, /group join <name>, /group leaderboard, /group stats <player>" },
+            { "GroupCommandsJoined", "[[b]]Member:[[/b]] /group info, /group invite <player>, /group leave, /group leaderboard" },
+            { "GroupCommandsOwner", "[[b]]Owner:[[/b]] /group kick <player>, /group transfer <player>, /group disband" },
+            { "GroupCommandsFooter", "[[b]]Other:[[/b]] /group (this menu), /groupcommands (same), /groupui (toggle UI)" }
 
         };
 
@@ -203,7 +266,7 @@ namespace RestoreMonarchy.PlayerStats
 
         private void Save(bool async)
         {
-            List<PlayerStatsData> playersData = [];
+            List<PlayerStatsData> playersData = new();
 
             if (shutdownPlayerStats != null)
             {
@@ -222,10 +285,15 @@ namespace RestoreMonarchy.PlayerStats
 
             if (async)
             {
-                ThreadHelper.RunAsynchronously(() => Database.Save(playersData));
+                ThreadHelper.RunAsynchronously(() => 
+                {
+                    Database.Save(playersData);
+                    GroupDatabase.Save();
+                });
             } else
             {
                 Database.Save(playersData);
+                GroupDatabase.Save();
             }            
         }
 
@@ -234,7 +302,7 @@ namespace RestoreMonarchy.PlayerStats
         // get players data before shutdown
         private void onCommenceShutdown()
         {
-            List<PlayerStatsData> playersData = [];
+            List<PlayerStatsData> playersData = new();
             foreach (Player player in PlayerTool.EnumeratePlayers())
             {
                 PlayerStatsComponent component = player.GetComponent<PlayerStatsComponent>();
@@ -254,7 +322,7 @@ namespace RestoreMonarchy.PlayerStats
             {
                 Logger.Log("Server is shutting down, saving player stats...", ConsoleColor.Yellow);
                 Save(false);
-                shutdownPlayerStats = [];
+                shutdownPlayerStats = new();
                 Logger.Log("Player stats have been saved!", ConsoleColor.Yellow);
             }
         }
@@ -336,15 +404,15 @@ namespace RestoreMonarchy.PlayerStats
             }
         }
 
-        private readonly EPlayerStat[] stats =
-        [
+        private readonly EPlayerStat[] stats = new EPlayerStat[]
+        {
             EPlayerStat.FOUND_FISHES,
             EPlayerStat.KILLS_ANIMALS,
             EPlayerStat.KILLS_ZOMBIES_NORMAL,
             EPlayerStat.KILLS_ZOMBIES_MEGA,
             EPlayerStat.FOUND_RESOURCES,
             EPlayerStat.FOUND_PLANTS
-        ];
+        };
 
         private void OnPlayerUpdatedStat(UnturnedPlayer player, EPlayerStat stat)
         {
@@ -397,6 +465,29 @@ namespace RestoreMonarchy.PlayerStats
             if (component != null)
             {
                 component.OnStructureSpawned();
+            }
+        }
+
+        private void CleanupExpiredInvites()
+        {
+            List<Group> allGroups = GroupDatabase.GetAllGroups();
+            DateTime now = DateTime.UtcNow;
+
+            foreach (Group group in allGroups)
+            {
+                List<ulong> expired = group.InvitedPlayers
+                    .Where(kvp => kvp.Value <= now)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                if (expired.Count > 0)
+                {
+                    foreach (ulong steamId in expired)
+                    {
+                        group.InvitedPlayers.Remove(steamId);
+                    }
+                    GroupDatabase.AddOrUpdateGroup(group);
+                }
             }
         }
 

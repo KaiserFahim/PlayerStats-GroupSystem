@@ -58,8 +58,8 @@ namespace RestoreMonarchy.PlayerStats.Commands
 
         public string Syntax => "";
 
-        public List<string> Aliases => ["splaytime"];
+        public List<string> Aliases => new() { "splaytime" };
 
-        public List<string> Permissions => [];
+        public List<string> Permissions => new();
     }
 }

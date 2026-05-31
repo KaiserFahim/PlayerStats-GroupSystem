@@ -1,4 +1,5 @@
-﻿using RestoreMonarchy.PlayerStats.Models;
+﻿using RestoreMonarchy.PlayerStats.Helpers;
+using RestoreMonarchy.PlayerStats.Models;
 using Rocket.Core.Logging;
 using SDG.NetTransport;
 using SDG.Unturned;
@@ -8,6 +9,7 @@ namespace RestoreMonarchy.PlayerStats.Components
     public partial class PlayerStatsComponent
     {
         private bool isOpen = false;
+        private bool isGroupPanelOpen = false;
         private const short Key = 22512;
         private ITransportConnection TransportConnection => Player.channel.GetOwnerTransportConnection();
 
@@ -55,6 +57,7 @@ namespace RestoreMonarchy.PlayerStats.Components
 
             UpdateUIEffect();
             UpdateUIRanking();
+            UpdateUIGroup();
             ShowUIEffect();
         }
 
@@ -171,6 +174,105 @@ namespace RestoreMonarchy.PlayerStats.Components
         {
             EffectManager.askEffectClearByID(configuration.UIEffectId, TransportConnection);
             isOpen = false;
+            isGroupPanelOpen = false;
+        }
+
+        public void ToggleUIGroupPanel()
+        {
+            if (isGroupPanelOpen)
+            {
+                HideUIGroupPanel();
+            }
+            else
+            {
+                SendUIGroupPanel();
+            }
+        }
+
+        public void SendUIGroupPanel()
+        {
+            if (isGroupPanelOpen)
+            {
+                return;
+            }
+
+            if (isOpen)
+            {
+                HideUIEffect();
+            }
+
+            isGroupPanelOpen = true;
+            EffectManager.sendUIEffect(configuration.UIEffectId, Key, TransportConnection, true);
+
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Text", pluginInstance.Translate("UI_GroupPanelTitle"));
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Kills_Stats_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Deaths_Stats_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_HeadShot_Stats_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_Accuracy_Stats_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Stats_KD_Stats_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Group_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Reward_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Progress_Text", "");
+            EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Footer_Text", pluginInstance.Translate("UI_GroupPanelFooter"));
+            EffectManager.sendUIEffectVisibility(Key, TransportConnection, true, "PlayerStats_ProgressBar", false);
+
+            UpdateUIGroupPanelInfo();
+            ShowUIEffect();
+        }
+
+        public void UpdateUIGroupPanelInfo()
+        {
+            if (!isGroupPanelOpen)
+            {
+                return;
+            }
+
+            string menuText;
+            if (!string.IsNullOrEmpty(PlayerData.GroupId))
+            {
+                ThreadHelper.RunAsynchronously(() =>
+                {
+                    Group group = pluginInstance.GroupDatabase.GetGroup(PlayerData.GroupId);
+                    GroupRanking ranking = group != null ? pluginInstance.GroupDatabase.GetGroupRank(group.GroupId, configuration.ActualStatsMode) : null;
+
+                    ThreadHelper.RunSynchronously(() =>
+                    {
+                        if (group == null)
+                        {
+                            menuText = pluginInstance.Translate("UI_GroupPanelMenuNoGroup");
+                        }
+                        else
+                        {
+                            string rankStr = ranking != null ? "#" + ranking.Rank.ToString() : "-";
+                            menuText = pluginInstance.Translate("UI_GroupPanelMenuJoined", group.GroupName, rankStr, group.Members.Count);
+                        }
+                        EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", menuText);
+                    });
+                });
+            }
+            else
+            {
+                menuText = pluginInstance.Translate("UI_GroupPanelMenuNoGroup");
+                EffectManager.sendUIEffectText(Key, TransportConnection, true, "PlayerStats_Rank_Stats_Text", menuText);
+            }
+        }
+
+        public void HideUIGroupPanel()
+        {
+            EffectManager.askEffectClearByID(configuration.UIEffectId, TransportConnection);
+            isGroupPanelOpen = false;
+
+            if (isOpen)
+            {
+                isOpen = false;
+                SendUIEffect();
+            }
         }
     }
 }

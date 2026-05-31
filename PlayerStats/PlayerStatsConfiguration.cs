@@ -39,14 +39,21 @@ namespace RestoreMonarchy.PlayerStats
         public int MinimumRankingTreshold { get; set; }
         public bool EnableRewards { get; set; }
         public Reward[] Rewards { get; set; }
+        // Group Settings
+        public int MaxGroupSize { get; set; }
+        public int InviteTimeoutSeconds { get; set; }
+        public int GroupNameMinLength { get; set; }
+        public int GroupNameMaxLength { get; set; }
+        public int GroupLeaderboardPageSize { get; set; }
+
         public bool EnableAutomaticBans { get; set; } = false;
-        public AutomaticBan[] AutomaticBans { get; set; } = 
-        [
+        public AutomaticBan[] AutomaticBans { get; set; } = new AutomaticBan[]
+        {
             new AutomaticBan
             {
                 Reason = "Cheating (AB)",
-                Conditions =
-                [
+                Conditions = new AutomaticBanCondition[]
+                {
                     new AutomaticBanCondition
                     {
                         Comparer = "greater",
@@ -65,9 +72,9 @@ namespace RestoreMonarchy.PlayerStats
                         Stat = nameof(PlayerStatsData.Playtime),
                         Value = 3600
                     }
-                ]
+                }
             },
-        ];
+        };
 
         // Only hide legacy properties when using new StatsMode
         public bool ShouldSerializeEnablePVPStats() => StatsMode == null;
@@ -143,8 +150,15 @@ namespace RestoreMonarchy.PlayerStats
             ShowCombinedDeaths = true;
 
             MinimumRankingTreshold = 25;
+            MaxGroupSize = 10;
+            InviteTimeoutSeconds = 120;
+            GroupNameMinLength = 3;
+            GroupNameMaxLength = 16;
+            GroupLeaderboardPageSize = 10;
+
             EnableRewards = true;
-            Rewards = [
+            Rewards = new Reward[]
+            {
                 new Reward
                 {
                     Name = "VIP Rank",
@@ -157,7 +171,7 @@ namespace RestoreMonarchy.PlayerStats
                     PermissionGroup = "mvp",
                     Treshold = 125
                 }
-            ];
+            };
         }
     }
 }

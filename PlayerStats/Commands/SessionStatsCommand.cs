@@ -79,8 +79,8 @@ namespace RestoreMonarchy.PlayerStats.Commands
 
         public string Syntax => "";
 
-        public List<string> Aliases => ["sstats"];
+        public List<string> Aliases => new() { "sstats" };
 
-        public List<string> Permissions => [];
+        public List<string> Permissions => new();
     }
 }

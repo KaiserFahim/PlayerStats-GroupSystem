@@ -22,6 +22,7 @@ namespace RestoreMonarchy.PlayerStats.Models
         public int Barricades { get; set; }
         public ulong Playtime  { get; set; }
         public bool? UIDisabled { get; set; }
+        public string GroupId { get; set; }
         public DateTime LastUpdated { get; set; }
 
         [JsonIgnore]

@@ -68,16 +68,16 @@ namespace RestoreMonarchy.PlayerStats.Databases
             string query = FormatSql(@"
                 INSERT INTO PlayerStats (
                     SteamId, Name, Kills, Headshots, PVPDeaths, PVEDeaths, Zombies, MegaZombies,
-                    Animals, Resources, Harvests, Fish, Structures, Barricades, Playtime, UIDisabled, LastUpdated
+                    Animals, Resources, Harvests, Fish, Structures, Barricades, Playtime, UIDisabled, GroupId, LastUpdated
                 ) VALUES (
                     @SteamId, @Name, @Kills, @Headshots, @PVPDeaths, @PVEDeaths, @Zombies, @MegaZombies,
-                    @Animals, @Resources, @Harvests, @Fish, @Structures, @Barricades, @Playtime, @UIDisabled, @LastUpdated
+                    @Animals, @Resources, @Harvests, @Fish, @Structures, @Barricades, @Playtime, @UIDisabled, @GroupId, @LastUpdated
                 ) ON DUPLICATE KEY UPDATE
                     Name = @Name, Kills = @Kills, Headshots = @Headshots, PVPDeaths = @PVPDeaths,
                     PVEDeaths = @PVEDeaths, Zombies = @Zombies, MegaZombies = @MegaZombies,
                     Animals = @Animals, Resources = @Resources, Harvests = @Harvests, Fish = @Fish,
                     Structures = @Structures, Barricades = @Barricades, Playtime = @Playtime,
-                    UIDisabled = @UIDisabled, LastUpdated = @LastUpdated");
+                    UIDisabled = @UIDisabled, GroupId = @GroupId, LastUpdated = @LastUpdated");
 
             player.LastUpdated = DateTime.UtcNow;
 
@@ -145,10 +145,10 @@ namespace RestoreMonarchy.PlayerStats.Databases
             string query = FormatSql(@"
                 INSERT INTO PlayerStats (
                     SteamId, Name, Kills, Headshots, PVPDeaths, PVEDeaths, Zombies, MegaZombies,
-                    Animals, Resources, Harvests, Fish, Structures, Barricades, Playtime, UIDisabled, LastUpdated
+                    Animals, Resources, Harvests, Fish, Structures, Barricades, Playtime, UIDisabled, GroupId, LastUpdated
                 ) VALUES (
                     @SteamId, @Name, @Kills, @Headshots, @PVPDeaths, @PVEDeaths, @Zombies, @MegaZombies,
-                    @Animals, @Resources, @Harvests, @Fish, @Structures, @Barricades, @Playtime, @UIDisabled, @LastUpdated
+                    @Animals, @Resources, @Harvests, @Fish, @Structures, @Barricades, @Playtime, @UIDisabled, @GroupId, @LastUpdated
                 ) ON DUPLICATE KEY UPDATE
                     Name = VALUES(Name),
                     Kills = VALUES(Kills),
@@ -165,6 +165,7 @@ namespace RestoreMonarchy.PlayerStats.Databases
                     Barricades = VALUES(Barricades),
                     Playtime = VALUES(Playtime),
                     UIDisabled = VALUES(UIDisabled),
+                    GroupId = VALUES(GroupId),
                     LastUpdated = VALUES(LastUpdated)");
 
             DateTime now = DateTime.UtcNow;
