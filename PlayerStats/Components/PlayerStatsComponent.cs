@@ -220,6 +220,37 @@ namespace RestoreMonarchy.PlayerStats.Components
             }
 
             CheckAutomaticBan();
+            RefreshGroupUIMembers();
+        }
+
+        private void RefreshGroupUIMembers()
+        {
+            if (string.IsNullOrEmpty(PlayerData.GroupId))
+                return;
+
+            ThreadHelper.RunAsynchronously(() =>
+            {
+                Group group = pluginInstance.GroupDatabase.GetGroup(PlayerData.GroupId);
+                ThreadHelper.RunSynchronously(() =>
+                {
+                    if (group == null) return;
+                    foreach (ulong memberId in group.Members)
+                    {
+                        foreach (Player p in PlayerTool.EnumeratePlayers())
+                        {
+                            if (p.channel.owner.playerID.steamID.m_SteamID == memberId)
+                            {
+                                PlayerStatsComponent comp = p.GetComponent<PlayerStatsComponent>();
+                                if (comp != null && comp.isGroupPanelOpen)
+                                {
+                                    comp.UpdateUIGroupPanelInfo();
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            });
         }
 
         internal void CheckGiveReward()
